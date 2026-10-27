@@ -5,15 +5,30 @@ import evdev
 from evdev import InputDevice, UInput, ecodes
 
 # --- CONFIG MACRO ---
-KEY_TO_PRESS = (
-    ecodes.KEY_D
-)  # The key to be used (you can change the key to whatever you want)
-TOGGLE_KEY = ecodes.KEY_GRAVE  # Toggle ON/OFF
-DELAY = 0.5  # Delay
+KEY_TO_PRESS = ecodes.KEY_D  # Tombol keyboard yang diulang-ulang
+TOGGLE_KEY = ecodes.KEY_GRAVE  # Toggle macro keyboard ON/OFF (`)
+DELAY = 0.5  # Jeda antar tekanan tombol
+
+# --- CONFIG HOLD CLICK ---
+HOLD_TOGGLE_KEY = ecodes.KEY_HOME  # Toggle hold click ON/OFF
+HOLD_BUTTON = ecodes.BTN_LEFT  # BTN_LEFT / BTN_RIGHT / BTN_MIDDLE
 # -------------------------
 
 is_running = False
+is_holding = False
+hold_lock = threading.Lock()
+
+# Virtual keyboard
 ui = UInput()
+
+# Virtual mouse (butuh EV_REL supaya dikenali sebagai mouse oleh compositor)
+mouse = UInput(
+    {
+        ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE],
+        ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL],
+    },
+    name="macro-virtual-mouse",
+)
 
 
 def find_keyboard():
@@ -27,9 +42,19 @@ def find_keyboard():
     return keyboards
 
 
+def set_hold(state: bool):
+    """Tahan (True) atau lepas (False) tombol mouse."""
+    global is_holding
+    with hold_lock:
+        if state == is_holding:
+            return
+        is_holding = state
+        mouse.write(ecodes.EV_KEY, HOLD_BUTTON, 1 if state else 0)
+        mouse.syn()
+
+
 def macro_loop():
     """Background process for executing automated typing."""
-    global is_running
     while True:
         if is_running:
             ui.write(ecodes.EV_KEY, KEY_TO_PRESS, 1)  # press
@@ -50,6 +75,11 @@ def listen_device(dev):
                     is_running = not is_running
                     status = "ON (ACTIVE)" if is_running else "OFF (INACTIVE)"
                     print(f"[{time.strftime('%H:%M:%S')}] Status Macro: {status}")
+
+                elif event.code == HOLD_TOGGLE_KEY:
+                    set_hold(not is_holding)
+                    status = "ON (DITAHAN)" if is_holding else "OFF (DILEPAS)"
+                    print(f"[{time.strftime('%H:%M:%S')}] Hold Click: {status}")
     except OSError:
         pass
 
@@ -59,9 +89,12 @@ def main():
     print("    ARCH LINUX (HYPRLAND) AUTO KEYBOARD MACRO  ")
     print("    (evdev version - Wayland compatible)      ")
     print("=============================================")
-    print(f" Macro Key     : '{ecodes.KEY[KEY_TO_PRESS]}'")
-    print(f" Toggle ON/OFF : [{ecodes.KEY[TOGGLE_KEY]}]")
-    print(f" Delay Interval: {DELAY} seconds")
+    print(f" Macro Key      : '{ecodes.KEY[KEY_TO_PRESS]}'")
+    print(f" Toggle Macro   : [{ecodes.KEY[TOGGLE_KEY]}]")
+    print(
+        f" Toggle Hold    : [{ecodes.KEY[HOLD_TOGGLE_KEY]}] ({ecodes.BTN[HOLD_BUTTON]})"
+    )
+    print(f" Delay Interval : {DELAY} seconds")
     print("=============================================")
 
     keyboards = find_keyboard()
@@ -78,21 +111,21 @@ def main():
     print("=============================================")
     print("Press Ctrl+C in the terminal to stop the program.\n")
 
-    macro_thread = threading.Thread(target=macro_loop, daemon=True)
-    macro_thread.start()
+    threading.Thread(target=macro_loop, daemon=True).start()
 
-    #
-    listener_threads = []
     for kb in keyboards:
-        t = threading.Thread(target=listen_device, args=(kb,), daemon=True)
-        t.start()
-        listener_threads.append(t)
+        threading.Thread(target=listen_device, args=(kb,), daemon=True).start()
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nProgram macro dihentikan.")
+    finally:
+        # PENTING: pastikan tombol mouse dilepas saat program keluar
+        set_hold(False)
+        mouse.close()
+        ui.close()
 
 
 if __name__ == "__main__":
