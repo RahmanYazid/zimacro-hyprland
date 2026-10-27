@@ -5,9 +5,9 @@ import evdev
 from evdev import InputDevice, UInput, ecodes
 
 # --- CONFIG MACRO ---
-KEY_TO_PRESS = ecodes.KEY_D  # Tombol keyboard yang diulang-ulang
+KEY_TO_PRESS = ecodes.KEY_D  # Keyboard key to repeat
 TOGGLE_KEY = ecodes.KEY_GRAVE  # Toggle macro keyboard ON/OFF (`)
-DELAY = 0.5  # Jeda antar tekanan tombol
+DELAY = 0.5  # Delay between key presses
 
 # --- CONFIG HOLD CLICK ---
 HOLD_TOGGLE_KEY = ecodes.KEY_HOME  # Toggle hold click ON/OFF
@@ -21,7 +21,7 @@ hold_lock = threading.Lock()
 # Virtual keyboard
 ui = UInput()
 
-# Virtual mouse (butuh EV_REL supaya dikenali sebagai mouse oleh compositor)
+# Virtual mouse (requires EV_REL to be recognized as a mouse by the compositor)
 mouse = UInput(
     {
         ecodes.EV_KEY: [ecodes.BTN_LEFT, ecodes.BTN_RIGHT, ecodes.BTN_MIDDLE],
@@ -43,7 +43,7 @@ def find_keyboard():
 
 
 def set_hold(state: bool):
-    """Tahan (True) atau lepas (False) tombol mouse."""
+    """Hold (True) or release (False) the mouse button."""
     global is_holding
     with hold_lock:
         if state == is_holding:
@@ -74,11 +74,11 @@ def listen_device(dev):
                 if event.code == TOGGLE_KEY:
                     is_running = not is_running
                     status = "ON (ACTIVE)" if is_running else "OFF (INACTIVE)"
-                    print(f"[{time.strftime('%H:%M:%S')}] Status Macro: {status}")
+                    print(f"[{time.strftime('%H:%M:%S')}] Macro Status: {status}")
 
                 elif event.code == HOLD_TOGGLE_KEY:
                     set_hold(not is_holding)
-                    status = "ON (DITAHAN)" if is_holding else "OFF (DILEPAS)"
+                    status = "ON (HELD)" if is_holding else "OFF (RELEASED)"
                     print(f"[{time.strftime('%H:%M:%S')}] Hold Click: {status}")
     except OSError:
         pass
@@ -120,9 +120,9 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nProgram macro dihentikan.")
+        print("\nMacro program stopped.")
     finally:
-        # PENTING: pastikan tombol mouse dilepas saat program keluar
+        # IMPORTANT: ensure the mouse button is released when the program exits
         set_hold(False)
         mouse.close()
         ui.close()
